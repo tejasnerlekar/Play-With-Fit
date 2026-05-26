@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Animator — Play With Fit</title>
+<style>
+@font-face {
+  font-family: "FitKannadaVF";
+  src: url("../shared/fonts/FitKannadaVF.woff2") format("woff2");
+  font-weight: 100 900; font-display: block;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+body { background: #e1ff4f; font-family: system-ui, -apple-system, sans-serif; }
+
+/* ── Control panel — top-right, always dark ── */
+.ctrl-wrap {
+  position: fixed; right: 16px; top: 16px;
+  width: 300px; border-radius: 12px; overflow: hidden;
+  background: rgba(18,18,18,0.88);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+  z-index: 100;
+}
+.ctrl-wrap.hidden { display: none; }
+
+.ctrl-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; cursor: pointer; user-select: none;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.ctrl-title {
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .14em; color: rgba(255,255,255,0.45);
+}
+.ctrl-chevron {
+  font-size: 10px; color: rgba(255,255,255,0.40);
+  transition: transform .28s ease; line-height: 1;
+}
+.ctrl-body {
+  overflow: hidden; max-height: 800px; opacity: 1;
+  transition: max-height .32s cubic-bezier(.4,0,.2,1), opacity .22s;
+}
+.ctrl-body.collapsed { max-height: 0; opacity: 0; }
+.ctrl-panel {
+  display: flex; flex-direction: column; gap: 11px;
+  padding: 14px 15px 15px;
+  color: #fff; font-size: 12px;
+}
+.cg { display: flex; flex-direction: column; gap: 4px; }
+.cr { display: flex; gap: 8px; }
+.cr > .cg { flex: 1; }
+.cl { margin: 0; font-size: 9px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .12em; color: rgba(255,255,255,0.42); }
+.ci {
+  width: 100%; border-radius: 8px; outline: none; padding: 7px 10px;
+  font-size: 12px; font-family: system-ui, -apple-system, sans-serif;
+  background: rgba(255,255,255,0.09); color: #fff;
+  border: 1px solid rgba(255,255,255,0.13); transition: border-color .18s;
+}
+.ci:focus { border-color: rgba(255,255,255,0.40); }
+.cb {
+  width: 100%; border-radius: 8px; outline: none; padding: 7px 11px;
+  font-size: 12px; font-family: system-ui, -apple-system, sans-serif; cursor: pointer;
+  text-align: left; background: rgba(255,255,255,0.09); color: #fff;
+  border: 1px solid rgba(255,255,255,0.13); transition: background .14s, border-color .14s;
+}
+.cb:hover { border-color: rgba(255,255,255,.32); }
+.sw-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.sw {
+  width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent;
+  cursor: pointer; transition: border-color .14s, transform .14s; flex-shrink: 0;
+}
+.sw:hover { transform: scale(1.13); }
+.sw.active { border-color: #fff !important; }
+
+/* Sketch */
+svg  { width: 100vw; height: 100vh; display: block; }
+text { fill: #000; font-family: "FitKannadaVF"; dominant-baseline: middle; }
+</style>
+</head>
+<body>
+
+<svg id="svg"><text id="svgText"></text></svg>
+
+<div id="ctrlWrap" class="ctrl-wrap">
+  <div class="ctrl-header" id="ctrl-header">
+    <span class="ctrl-title">Controls</span>
+    <span class="ctrl-chevron">▲</span>
+  </div>
+  <div class="ctrl-body">
+    <div class="ctrl-panel">
+      <div class="cg">
+        <p class="cl">Text</p>
+        <input id="textInput" class="ci" type="text" value="Fit ಕನ್ನಡ">
+      </div>
+      <div class="cr">
+        <div class="cg">
+          <p class="cl">Line Height</p>
+          <input id="lhInput" class="ci" type="number" step="0.05" min="0.8" max="3" value="1.2">
+        </div>
+        <div class="cg">
+          <p class="cl">Alignment</p>
+          <button id="alignBtn" class="cb">Center</button>
+        </div>
+      </div>
+      <div class="cr">
+        <div class="cg">
+          <p class="cl">Animation</p>
+          <button id="modeBtn" class="cb">Blocked</button>
+        </div>
+        <div class="cg">
+          <p class="cl">Theme</p>
+          <div class="sw-row">
+            <div class="sw active" data-i="0" style="background:#e1ff4f;"></div>
+            <div class="sw"        data-i="1" style="background:#00176a;"></div>
+            <div class="sw"        data-i="2" style="background:#0a0a0a;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── Collapse toggle ── */
+(function () {
+  const header  = document.getElementById('ctrl-header');
+  const body    = document.querySelector('.ctrl-body');
+  const chevron = header.querySelector('.ctrl-chevron');
+  let expanded  = true;
+  header.addEventListener('click', () => {
+    expanded = !expanded;
+    body.classList.toggle('collapsed', !expanded);
+    chevron.style.transform = expanded ? '' : 'rotate(180deg)';
+  });
+})();
+
+/* ── Sketch ── */
+const THEMES = [
+  { bg: '#e1ff4f', fg: '#000000' },
+  { bg: '#00176a', fg: '#f05ae4' },
+  { bg: '#0a0a0a', fg: '#ffffff' },
+];
+const BASE = 1000, MIN = 140, MAX = 3600, MOVE = 600, HOLD = 500, WSPD = 0.003;
+let mode = 'blocked', text = 'Fit ಕನ್ನಡ', lh = 1.2, align = 'center';
+let letters = [], w = 0, h = 0, loopIdx = 0, phase = 'holdBase', phaseT = performance.now();
+
+const svgEl  = document.getElementById('svg');
+const textEl = document.getElementById('svgText');
+const seg    = new Intl.Segmenter('kn-IN', { granularity: 'grapheme' });
+
+function ease(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3) / 2; }
+
+function clusters(str) {
+  const raw = [...seg.segment(str.normalize('NFC'))], out = [];
+  for (let i = 0; i < raw.length; i++) {
+    let c = raw[i].segment;
+    while (c.endsWith('\u0CCD') && raw[i+1] && raw[i+1].segment !== ' ') c += raw[++i].segment;
+    out.push(c);
+  }
+  return out;
+}
+
+function build() {
+  textEl.innerHTML = ''; letters = [];
+  const segs = clusters(text), words = [], buf = [];
+  segs.forEach(s => { if (s === ' ') { if (buf.length) words.push([...buf]); buf.length = 0; } else buf.push(s); });
+  if (buf.length) words.push([...buf]);
+  const fs = Math.min(w, h) * 0.14, lineH = fs * lh, dy0 = -((words.length - 1) * lineH) / 2;
+  textEl.style.fontSize = fs + 'px';
+  textEl.setAttribute('text-anchor', align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle');
+  const ax = align === 'left' ? w * .10 : align === 'right' ? w * .90 : w / 2;
+  words.forEach((lc, i) => {
+    const ln = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+    ln.setAttribute('x', ax); ln.setAttribute('dy', i === 0 ? dy0 : lineH);
+    lc.forEach((ch, j) => {
+      const sp = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+      sp.textContent = ch;
+      letters.push({ span: sp, set: j % 2, wdth: BASE, from: BASE, to: BASE });
+      ln.appendChild(sp);
+    });
+    textEl.appendChild(ln);
+  });
+  phase = 'holdBase'; phaseT = performance.now();
+}
+
+function setTargets() {
+  letters.forEach(l => { l.from = BASE; l.to = (loopIdx % 2 === 0) ? (l.set ? MAX : MIN) : (l.set ? MIN : MAX); });
+}
+
+function tick(now) {
+  const el = now - phaseT;
+  if (mode === 'wavy') {
+    letters.forEach((l, i) => {
+      const r = i / (letters.length - 1 || 1);
+      l.wdth = (MAX + MIN) / 2 + Math.sin(now * WSPD + r * Math.PI) * (MAX - MIN) / 2;
+      l.span.style.fontVariationSettings = `"wdth" ${l.wdth}`;
+    });
+  } else {
+    if      (phase === 'holdBase'    && el > HOLD) { setTargets(); phase = 'moveOut';    phaseT = now; }
+    else if (phase === 'moveOut') {
+      const t = Math.min(el / MOVE, 1), e = ease(t);
+      letters.forEach(l => { l.wdth = l.from + (l.to - l.from) * e; l.span.style.fontVariationSettings = `"wdth" ${l.wdth}`; });
+      if (t === 1) { phase = 'holdExtreme'; phaseT = now; }
+    }
+    else if (phase === 'holdExtreme' && el > HOLD) { phase = 'moveBack'; phaseT = now; }
+    else if (phase === 'moveBack') {
+      const t = Math.min(el / MOVE, 1), e = ease(t);
+      letters.forEach(l => { l.wdth = l.to + (BASE - l.to) * e; l.span.style.fontVariationSettings = `"wdth" ${l.wdth}`; });
+      if (t === 1) { phase = 'holdBase'; phaseT = now; loopIdx++; }
+    }
+  }
+  requestAnimationFrame(tick);
+}
+
+function resize() {
+  w = innerWidth; h = innerHeight;
+  svgEl.setAttribute('width', w); svgEl.setAttribute('height', h);
+  textEl.setAttribute('x', w / 2); textEl.setAttribute('y', h / 2);
+  build();
+}
+
+/* Swatches — only change scene bg + text fill, NOT panel */
+document.querySelectorAll('.sw').forEach(sw => {
+  sw.addEventListener('click', () => {
+    document.querySelectorAll('.sw').forEach(s => s.classList.remove('active'));
+    sw.classList.add('active');
+    const t = THEMES[parseInt(sw.dataset.i) || 0];
+    document.body.style.background = t.bg;
+    textEl.style.fill = t.fg;
+  });
+});
+
+document.getElementById('textInput').addEventListener('input',  e => { text  = e.target.value || ' '; build(); });
+document.getElementById('lhInput').addEventListener('input',    e => { lh    = parseFloat(e.target.value) || 1.2; build(); });
+document.getElementById('alignBtn').addEventListener('click', function () {
+  align = align === 'center' ? 'left' : align === 'left' ? 'right' : 'center';
+  this.textContent = { center: 'Center', left: 'Left', right: 'Right' }[align]; build();
+});
+document.getElementById('modeBtn').addEventListener('click', function () {
+  mode = mode === 'blocked' ? 'wavy' : 'blocked';
+  this.textContent = mode === 'blocked' ? 'Blocked' : 'Wavy';
+  phase = 'holdBase'; phaseT = performance.now();
+});
+
+window.addEventListener('resize', resize);
+document.fonts.ready.then(() => { resize(); requestAnimationFrame(tick); });
+</script>
+</body>
+</html>

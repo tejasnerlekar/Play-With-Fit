@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#000; overflow:hidden; }
+  </style>
+
+  <script src="p5.min.js"></script>
+
+  <!-- p5's _wrapPreload already calls _incrementPreload() before invoking the method.
+       So our override must only call _decrementPreload() — no extra increment. -->
+  <script>
+  (function () {
+    var VERT = [
+      'precision mediump float;',
+      'attribute vec3 aPosition;',
+      'attribute vec2 aTexCoord;',
+      'uniform mat4 uProjectionMatrix;',
+      'uniform mat4 uModelViewMatrix;',
+      'varying vec2 vTexCoord;',
+      'void main() {',
+      '  vTexCoord = aTexCoord;',
+      '  gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);',
+      '}'
+    ].join('\n');
+
+    var FRAG = [
+      'precision mediump float;',
+      'uniform sampler2D uSampler;',
+      'uniform float uOffset;',
+      'varying vec2 vTexCoord;',
+      'void main() {',
+      '  vec2 uv = vec2(fract(vTexCoord.x + uOffset), vTexCoord.y);',
+      '  gl_FragColor = texture2D(uSampler, uv);',
+      '}'
+    ].join('\n');
+
+    p5.prototype.loadShader = function (vertFile, fragFile, callback, errorCallback) {
+      var shader = new p5.Shader();
+      shader._vertSrc = VERT;
+      shader._fragSrc = FRAG;
+      var self = this;
+      // NOTE: _wrapPreload already called _incrementPreload() for us — don't call it again.
+      // Just decrement once when done, matching the single increment from the wrapper.
+      setTimeout(function () {
+        self._decrementPreload();
+        if (callback) callback(shader);
+      }, 0);
+      return shader;
+    };
+  })();
+  </script>
+</head>
+<body>
+  <script src="sketch.js"></script>
+
+  <script>
+  /* ── Ghost-cursor tutorial ── */
+  function runTutorial() {
+    if (!window.sk03) return;
+
+      var W = window.innerWidth, H = window.innerHeight;
+
+      // Two edges drawn in the lower-left area, clear of the corridor
+      var e1 = { x1: W*0.10, y1: H*0.52, x2: W*0.10, y2: H*0.88 };
+      var e2 = { x1: W*0.36, y1: H*0.47, x2: W*0.36, y2: H*0.86 };
+
+      // SVG layer for the animated preview line
+      var svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9998;overflow:visible';
+      svg.setAttribute('width', W); svg.setAttribute('height', H);
+      var ln = document.createElementNS('http://www.w3.org/2000/svg','line');
+      ln.setAttribute('stroke','rgba(255,255,255,0.65)');
+      ln.setAttribute('stroke-width','2');
+      ln.setAttribute('stroke-dasharray','7 5');
+      ln.style.opacity = '0';
+      svg.appendChild(ln);
+      document.body.appendChild(svg);
+
+      // Ghost cursor
+      var cur = document.createElement('div');
+      cur.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,0.88);box-shadow:0 0 0 3px rgba(255,255,255,0.22),0 2px 14px rgba(0,0,0,0.5);transform:translate(-50%,-50%);opacity:0;transition:opacity .35s;font-family:system-ui,sans-serif';
+      document.body.appendChild(cur);
+
+      // Hint text
+      var hint = document.createElement('div');
+      hint.textContent = 'draw two edges to make a plane';
+      hint.style.cssText = 'position:fixed;pointer-events:none;z-index:9999;font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,0.5);top:22px;left:50%;transform:translateX(-50%);opacity:0;transition:opacity .35s;font-family:system-ui,sans-serif;white-space:nowrap';
+      document.body.appendChild(hint);
+
+      function setPos(x,y){ cur.style.left=x+'px'; cur.style.top=y+'px'; }
+      function lerp(a,b,t){ return a+(b-a)*t; }
+      function ease(t){ return t<.5?2*t*t:(4-2*t)*t-1; }
+
+      var edge1Done = false, edge2Done = false;
+      var t0 = null;
+
+      window.sk03.setMode('draw');
+
+      function tick(ts) {
+        if (!t0) t0 = ts;
+        var t = ts - t0;
+
+        /* ── Phase 0 (0–400ms): fade in cursor at e1 start ── */
+        if (t < 400) {
+          setPos(e1.x1, e1.y1);
+          var p = t/400;
+          cur.style.opacity  = p.toFixed(2);
+          hint.style.opacity = (p*.75).toFixed(2);
+          ln.style.opacity   = '0';
+
+        /* ── Phase 1 (400–700ms): hover / click ── */
+        } else if (t < 700) {
+          cur.style.opacity = '1';
+          cur.style.transform = 'translate(-50%,-50%) scale(0.80)';
+
+        /* ── Phase 2 (700–1300ms): drag edge 1 down ── */
+        } else if (t < 1300) {
+          var p = ease((t-700)/600);
+          var x = lerp(e1.x1, e1.x2, p);
+          var y = lerp(e1.y1, e1.y2, p);
+          setPos(x, y);
+          ln.setAttribute('x1',e1.x1); ln.setAttribute('y1',e1.y1);
+          ln.setAttribute('x2',x);     ln.setAttribute('y2',y);
+          ln.style.opacity = '1';
+
+          if (!edge1Done && t >= 1290) {
+            edge1Done = true;
+            window.sk03._tutAddEdge(e1.x1, e1.y1, e1.x2, e1.y2);
+          }
+
+        /* ── Phase 3 (1300–1600ms): release, pause ── */
+        } else if (t < 1600) {
+          cur.style.transform = 'translate(-50%,-50%) scale(1)';
+          ln.style.opacity = '0';
+          setPos(e1.x2, e1.y2);
+
+        /* ── Phase 4 (1600–2000ms): move to e2 start ── */
+        } else if (t < 2000) {
+          var p = ease((t-1600)/400);
+          setPos(lerp(e1.x2, e2.x1, p), lerp(e1.y2, e2.y1, p));
+          ln.style.opacity = '0';
+
+        /* ── Phase 5 (2000–2250ms): hover / click ── */
+        } else if (t < 2250) {
+          setPos(e2.x1, e2.y1);
+          cur.style.transform = 'translate(-50%,-50%) scale(0.80)';
+
+        /* ── Phase 6 (2250–2850ms): drag edge 2 down → plane created ── */
+        } else if (t < 2850) {
+          var p = ease((t-2250)/600);
+          var x = lerp(e2.x1, e2.x2, p);
+          var y = lerp(e2.y1, e2.y2, p);
+          setPos(x, y);
+          ln.setAttribute('x1',e2.x1); ln.setAttribute('y1',e2.y1);
+          ln.setAttribute('x2',x);     ln.setAttribute('y2',y);
+          ln.style.opacity = '1';
+
+          if (!edge2Done && t >= 2840) {
+            edge2Done = true;
+            window.sk03._tutAddEdge(e2.x1, e2.y1, e2.x2, e2.y2);
+          }
+
+        /* ── Phase 7 (2850–3400ms): release + fade out ── */
+        } else if (t < 3400) {
+          var p = (t-2850)/550;
+          cur.style.opacity  = (1-p).toFixed(2);
+          hint.style.opacity = ((1-p)*.75).toFixed(2);
+          ln.style.opacity   = '0';
+          cur.style.transform = 'translate(-50%,-50%) scale(1)';
+          window.sk03.setMode('select');
+
+        /* ── Done ── */
+        } else {
+          cur.remove(); hint.remove(); svg.remove();
+          localStorage.setItem('pwf-tut-sk03','1');
+          return;
+        }
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+  }
+
+  // Expose so parent can call it via the Quick Tutorial button
+  window.sk03Tutorial = runTutorial;
+
+  // Auto-play on first visit (after p5 initialises)
+  setTimeout(function() {
+    if (!localStorage.getItem('pwf-tut-sk03')) runTutorial();
+  }, 2000);
+  </script>
+</body>
+</html>

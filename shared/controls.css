@@ -1,0 +1,348 @@
+/* ================================================================
+   Play With Fit — Shared Control System
+   ----------------------------------------------------------------
+   Import in any sketch:
+     <link rel="stylesheet" href="../shared/controls.css">
+
+   Font URL is relative to THIS file → shared/fonts/FitKannadaVF.ttf
+   ================================================================ */
+
+/* ── FONT ──────────────────────────────────────────────────────── */
+@font-face {
+  font-family: "FitKannadaVF";
+  src: url("fonts/FitKannadaVF.ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: block;
+}
+
+/* ── RESET ─────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+body {
+  background: var(--bg, #0a0a0a);
+  color: var(--fg, #fff);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* ================================================================
+   CSS VARIABLES
+   Override these per-sketch in a <style> block or inline:
+     :root { --bg: #e1ff4f; --fg: #000; }
+   ================================================================ */
+:root {
+  /* Scene colours */
+  --bg:  #0a0a0a;
+  --fg:  #ffffff;
+
+  /* Panel colours (auto-updated by PWFControls.applyTheme) */
+  --panel-wrap-bg:  rgba(10,10,10,0.40);
+  --panel-bg:       rgba(18,18,18,0.84);
+  --panel-text:     #ffffff;
+  --input-bg:       rgba(255,255,255,0.09);
+  --input-border:   rgba(255,255,255,0.13);
+  --input-focus:    rgba(255,255,255,0.40);
+}
+
+/* ================================================================
+   FLOATING PANEL — RIGHT-EDGE DRAWER (desktop)
+   ----------------------------------------------------------------
+   The panel sticks to the right edge of the viewport.
+   .ctrl-arrow is an always-visible tab on the left of the panel.
+   When collapsed (.hidden), the panel slides right — only the
+   32px arrow tab remains visible.
+
+   On mobile (≤ 700px) it becomes a bottom drawer instead, with
+   the arrow tab on top.
+   ================================================================ */
+.ctrl-wrap {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  border-radius: 12px 0 0 12px;
+  overflow: hidden;
+  box-shadow: -4px 0 32px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.07);
+  z-index: 100;
+  transition: transform .36s cubic-bezier(.4, 0, .2, 1);
+}
+
+/* Collapsed: slide right, leaving 32px arrow tab visible */
+.ctrl-wrap.hidden {
+  transform: translateY(-50%) translateX(calc(100% - 32px));
+}
+
+/* ================================================================
+   ARROW TAB  — the always-visible toggle handle
+   ================================================================ */
+.ctrl-arrow {
+  width: 32px;
+  min-height: 80px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-wrap-bg, rgba(10,10,10,0.55));
+  border: none;
+  cursor: pointer;
+  color: var(--panel-text, rgba(255,255,255,0.60));
+  font-size: 13px;
+  padding: 0;
+  transition: background .15s, color .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.ctrl-arrow:hover { color: var(--fg, #fff); }
+
+/* ================================================================
+   INNER PANEL
+   ================================================================ */
+.ctrl-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 15px 17px;
+  border-radius: 0;           /* parent .ctrl-wrap handles clipping */
+  width: 300px;
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  background: var(--panel-bg);
+  color: var(--panel-text);
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+}
+
+/* Wide variant for panels that need more room */
+.ctrl-panel.wide { width: 320px; }
+
+/* ================================================================
+   MOBILE — BOTTOM DRAWER  (≤ 700px)
+   ----------------------------------------------------------------
+   Panel slides up from the bottom. Arrow tab sits on top,
+   always visible above the viewport bottom edge.
+   ================================================================ */
+@media (max-width: 700px) {
+  .ctrl-wrap {
+    right: auto;
+    bottom: 0;
+    left: 50%;
+    top: auto;
+    transform: translateX(-50%);
+    flex-direction: column;   /* arrow on top, panel below */
+    border-radius: 12px 12px 0 0;
+    max-width: 95vw;
+    box-shadow: 0 -4px 32px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.07);
+  }
+
+  /* Collapsed: slide down, leaving 32px arrow tab visible */
+  .ctrl-wrap.hidden {
+    transform: translateX(-50%) translateY(calc(100% - 32px));
+  }
+
+  .ctrl-arrow {
+    width: 100%;
+    height: 32px;
+    min-height: 32px;
+    font-size: 11px;
+  }
+
+  .ctrl-panel {
+    width: min(300px, 90vw);
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+}
+
+/* ================================================================
+   LAYOUT HELPERS
+   ================================================================ */
+.cg {                           /* control group — vertical stack  */
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cr {                           /* control row — horizontal         */
+  display: flex;
+  gap: 8px;
+}
+
+.cr > .cg { flex: 1; }          /* equal-width columns inside a row */
+
+/* ================================================================
+   LABEL
+   ================================================================ */
+.cl {
+  margin: 0;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--panel-text);
+  opacity: .42;
+}
+
+/* ================================================================
+   TEXT INPUTS  (.ci = single-line,  .ct = textarea)
+   ================================================================ */
+.ci,
+.ct {
+  width: 100%;
+  border-radius: 8px;
+  outline: none;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--input-bg);
+  color: var(--panel-text);
+  border: 1px solid var(--input-border);
+  transition: border-color .18s;
+}
+
+.ci:focus,
+.ct:focus { border-color: var(--input-focus); }
+
+.ct {
+  resize: none;
+  height: 60px;
+}
+
+/* ================================================================
+   BUTTONS  (.cb = generic,  .cb-primary = filled CTA)
+   ================================================================ */
+.cb {
+  width: 100%;
+  border-radius: 8px;
+  outline: none;
+  padding: 7px 11px;
+  font-size: 12px;
+  font-family: system-ui, -apple-system, sans-serif;
+  cursor: pointer;
+  text-align: left;
+  background: var(--input-bg);
+  color: var(--panel-text);
+  border: 1px solid var(--input-border);
+  transition: background .14s, border-color .14s;
+}
+
+.cb:hover { border-color: rgba(255,255,255,.30); }
+
+.cb-primary {
+  text-align: center;
+  font-weight: 600;
+  background: var(--panel-text);
+  color: var(--panel-bg);
+  border-color: transparent;
+}
+
+.cb-primary:hover { opacity: .88; }
+
+/* ================================================================
+   THEME SWATCHES
+   ================================================================ */
+.sw-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sw {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color .14s, transform .14s;
+  flex-shrink: 0;
+}
+
+.sw:hover          { transform: scale(1.13); }
+.sw.active         { border-color: var(--fg) !important; }
+
+/* ================================================================
+   COLOR PICKERS
+   ================================================================ */
+.cpick-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
+  align-items: end;
+}
+
+/* Override columns when fewer pickers are needed */
+.cpick-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+.cpick-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+
+.cpick-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.cpick-item label {
+  font-size: 8.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  opacity: .38;
+  white-space: nowrap;
+  color: var(--panel-text);
+}
+
+input[type="color"] {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type="color"]::-webkit-color-swatch {
+  border: 2px solid rgba(255,255,255,.20);
+  border-radius: 50%;
+}
+
+/* ================================================================
+   TOGGLE CHECKBOXES
+   ================================================================ */
+.toggle-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.toggle-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  opacity: .45;
+  cursor: pointer;
+  color: var(--panel-text);
+}
+
+.toggle-item input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: #e1ff4f;
+  width: 12px;
+  height: 12px;
+}
+
+/* ================================================================
+   DIVIDER  (use inside panels to separate sections)
+   ================================================================ */
+.ctrl-divider {
+  height: 1px;
+  background: rgba(255,255,255,.10);
+  margin: 1px 0;
+}
